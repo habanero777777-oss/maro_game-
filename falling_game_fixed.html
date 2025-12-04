@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>まろさんのごはんゲーム</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    height: 100%;
+    width: 100%;
+    background-color: #f0f0f0;
+  }
+  #gameCanvas, #clearVideo {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+  }
+  #gameCanvas {
+    z-index: 1;
+    background-color: #a0d8f0;
+  }
+  #clearVideo {
+    display: none;
+    z-index: 5;
+  }
+  #titleScreen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(255,255,255,0.95);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    z-index: 10;
+    text-align: center;
+  }
+  #titleScreen img {
+    max-width: 80%;
+    height: auto;
+    margin-bottom: 20px;
+  }
+  #titleScreen h1 {
+    font-size: 2em;
+    margin-bottom: 20px;
+  }
+  #titleScreen button {
+    font-size: 1.2em;
+    padding: 10px 20px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div id="titleScreen">
+  <img src="title.png" alt="タイトル画像">
+  <h1>まろさんのごはんを20個入手しろ</h1>
+  <button onclick="startGame()">スタート</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+<video id="clearVideo" src="clear.mp4" type="video/mp4"></video>
+<audio id="bgm" src="bgm.mp3" loop></audio>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const bgm = document.getElementById("bgm");
+const clearVideo = document.getElementById("clearVideo");
+
+let bones = [];
+let bombs = [];
+let player = { x: 0, y: 0, width: 0, height: 0 };
+let collected = 0;
+let gameInterval;
+
+// 画像
+const boneImg = new Image(); boneImg.src = "bone.png";
+const dogImg = new Image(); dogImg.src = "dog.png";
+const bombImg = new Image(); bombImg.src = "bomb.png";
+
+// 画面サイズ調整
+let scale = 1;
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  scale = Math.min(canvas.width / 400, canvas.height / 700);
+  player.width = 100 * scale;
+  player.height = 100 * scale;
+  player.x = canvas.width / 2 - player.width / 2;
+  player.y = canvas.height - player.height - 20 * scale;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// 犬操作（左右スワイプ）
+let lastTouch = null;
+document.addEventListener("touchstart", e => { lastTouch = e.touches[0]; });
+document.addEventListener("touchmove", e => {
+  if (!lastTouch) return;
+  let dx = e.touches[0].clientX - lastTouch.clientX;
+  player.x += dx;
+  if (player.x < 0) player.x = 0;
+  if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+  lastTouch = e.touches[0];
+  e.preventDefault();
+}, { passive: false });
+document.addEventListener("touchend", () => lastTouch = null);
+
+// ゲーム開始
+function startGame() {
+  document.getElementById("titleScreen").style.display = "none";
+  clearVideo.style.display = "none";
+  bgm.play();
+  bones = [];
+  bombs = [];
+  collected = 0;
+  gameInterval = setInterval(updateGame, 30);
+  spawnBone();
+  spawnBomb();
+}
+
+// 衝突判定
+function collision(a, b) {
+  return a.x < b.x + b.width &&
+         a.x + a.width > b.x &&
+         a.y < b.y + b.height &&
+         a.y + a.height > b.y;
+}
+
+// オブジェクトが横に重ならないかチェック
+function isFarEnough(x, width, list, minDistance) {
+  return list.every(item => Math.abs(item.x - x) > minDistance);
+}
+
+// 骨生成（重ならずランダム）
+function spawnBone() {
+  let size = 60 * scale;
+  let speed = 2 * scale + Math.random() * 2 * scale;
+  let xPos;
+  const minDistance = size;
+  let attempts = 0;
+  do {
+    xPos = Math.random() * (canvas.width - size);
+    attempts++;
+  } while (!isFarEnough(xPos, size, bones.concat(bombs), minDistance) && attempts < 20);
+  bones.push({ x: xPos, y: -size, width: size, height: size, speed: speed });
+  setTimeout(spawnBone, 1000 + Math.random() * 2000);
+}
+
+// 爆弾生成（重ならずランダム）
+function spawnBomb() {
+  let size = 60 * scale;
+  let speed = 3 * scale + Math.random() * 2 * scale;
+  let xPos;
+  const minDistance = size;
+  let attempts = 0;
+  do {
+    xPos = Math.random() * (canvas.width - size);
+    attempts++;
+  } while (!isFarEnough(xPos, size, bones.concat(bombs), minDistance) && attempts < 20);
+  bombs.push({ x: xPos, y: -size, width: size, height: size, speed: speed });
+  setTimeout(spawnBomb, 1200 + Math.random() * 2000);
+}
+
+// ゲーム更新
+function updateGame() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // プレイヤー描画
+  ctx.drawImage(dogImg, player.x, player.y, player.width, player.height);
+
+  // 骨描画
+  bones.forEach((bone, index) => {
+    bone.y += bone.speed;
+    ctx.drawImage(boneImg, bone.x, bone.y, bone.width, bone.height);
+    if (collision(player, bone)) {
+      collected++;
+      bones.splice(index, 1);
+    }
+  });
+
+  // 爆弾描画
+  bombs.forEach((bomb, index) => {
+    bomb.y += bomb.speed;
+    ctx.drawImage(bombImg, bomb.x, bomb.y, bomb.width, bomb.height);
+    const hitBox = {
+      x: bomb.x + bomb.width * 0.25,
+      y: bomb.y + bomb.height * 0.25,
+      width: bomb.width * 0.5,
+      height: bomb.height * 0.5
+    };
+    if (collision(player, hitBox)) {
+      clearInterval(gameInterval);
+      alert("ゲームオーバー！集めたごはん: " + collected);
+      document.getElementById("titleScreen").style.display = "flex";
+    }
+  });
+
+  // クリア判定
+  if (collected >= 20) {
+    clearInterval(gameInterval);
+    playClearVideo();
+  }
+
+  // スコア表示
+  ctx.fillStyle = "black";
+  ctx.font = `${28 * scale}px sans-serif`;
+  ctx.fillText("ごはん: " + collected + "/20", 10, 40 * scale);
+}
+
+// クリア動画再生
+function playClearVideo() {
+  bgm.pause();
+  clearVideo.style.display = "block";
+  clearVideo.currentTime = 0;
+  clearVideo.play();
+  clearVideo.onended = () => {
+    clearVideo.style.display = "none";
+    document.getElementById("titleScreen").style.display = "flex";
+    bgm.play();
+  };
+}
+</script>
+
+</body>
+</html>
